@@ -13,10 +13,13 @@ Tencent EdgeOne Pages Functions app for triggering a GitHub Actions workflow to 
 ## Project Structure
 
 ```text
+functions/
+  index.js       # Shared EdgeOne Pages Function entry
+  login/index.js # /login route entry
+  sync/index.js  # /sync route entry
+  healthy/index.js # /healthy route entry
 .edgeone/
-  functions/
-    index.js     # EdgeOne Pages Function entry
-  meta.json      # EdgeOne route configuration
+  meta.json      # EdgeOne project route metadata
   project.json   # EdgeOne project metadata
 ```
 
@@ -94,6 +97,18 @@ on:
 2. Connect or deploy the project through Tencent EdgeOne Pages.
 3. Configure the required environment variables in EdgeOne.
 4. Visit `/login`, sign in, then use `/` to submit image sync jobs.
+
+Recommended EdgeOne Pages build settings:
+
+| Setting | Value |
+| --- | --- |
+| Framework preset | Other / None |
+| Root directory | `/` |
+| Install command | Empty |
+| Build command | Empty, or `echo "no build"` if required |
+| Output directory | `.` |
+
+Do not set the output directory to `.edgeone`. The deployable source includes the root-level `functions/` directory; using `.edgeone` as the output directory can produce an artifact with only metadata files and cause every route to return 404.
 
 ## Security Notes
 
