@@ -26,6 +26,14 @@
       ]
     },
     {
+      "routePath": "/history",
+      "mountPath": "/",
+      "method": "",
+      "module": [
+        "index.js:onRequest"
+      ]
+    },
+    {
       "routePath": "/healthy",
       "mountPath": "/",
       "method": "",

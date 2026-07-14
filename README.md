@@ -8,6 +8,7 @@ Tencent EdgeOne Pages Functions app for triggering a GitHub Actions workflow to 
 - 30-minute signed login cookie.
 - Server-side GitHub repository dispatch.
 - Docker pull command generation after dispatch succeeds.
+- Single-image sync form with reusable history from EdgeOne KV storage.
 - `/healthy` health check endpoint.
 
 ## Project Structure
@@ -17,6 +18,7 @@ functions/
   index.js       # Shared EdgeOne Pages Function entry
   login/index.js # /login route entry
   sync/index.js  # /sync route entry
+  history/index.js # /history route entry
   healthy/index.js # /healthy route entry
 .edgeone/
   meta.json      # EdgeOne project route metadata
@@ -38,6 +40,7 @@ Configure these variables in Tencent EdgeOne:
 | `SESSION_SECRET` | No | Secret used to sign login cookies. If omitted, `PASSWORD` is used. |
 | `ALIYUN_REGISTRY` | No | Default registry, for example `registry.cn-shanghai.aliyuncs.com`. |
 | `ALIYUN_NAME_SPACE` | No | Default Aliyun namespace. |
+| `SYNC_HISTORY_KV` | No | EdgeOne KV binding used to store synced image history. Also supports `HISTORY_KV`, `DOCKER_SYNC_KV`, or `SYNC_HISTORY`. |
 
 The local `.env` file is ignored by Git and should not be committed.
 
@@ -59,7 +62,22 @@ For a fine-grained GitHub token, grant access to the target repository and allow
 | `/login` | `GET` | Login page. |
 | `/login` | `POST` | Password verification and cookie creation. |
 | `/sync` | `POST` | Sends the GitHub repository dispatch request. Requires login. |
+| `/history` | `GET` | Returns previously submitted image sync history from KV. Requires login. |
 | `/healthy` | `GET` | Health check endpoint. |
+
+## Image History
+
+After `/sync` successfully sends the GitHub dispatch request, the app writes the submitted image mapping to KV. The history dropdown is deduplicated by source image without tag.
+
+Example:
+
+```text
+source: mattermost/mattermost-team-edition:11.8.3
+history key: mattermost/mattermost-team-edition
+target name: mattermost-team-edition:11.8.3
+```
+
+If the same history key is synced again with a newer tag, the latest submitted value replaces the old one.
 
 ## Dispatch Payload
 

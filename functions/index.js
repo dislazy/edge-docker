@@ -1,5 +1,6 @@
 const COOKIE_NAME = "auth_token";
 const COOKIE_EXPIRATION = 30 * 60;
+const HISTORY_STORE_KEY = "docker_sync_history";
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -31,6 +32,13 @@ export async function onRequest(context) {
       return methodNotAllowed();
     }
     return handleSyncPost(request, env);
+  }
+
+  if (url.pathname === "/history") {
+    if (request.method !== "GET") {
+      return methodNotAllowed();
+    }
+    return handleHistoryGet(env);
   }
 
   if (request.method === "GET" && (url.pathname === "/" || url.pathname === "")) {
@@ -131,7 +139,17 @@ async function handleSyncPost(request, env) {
       `docker pull registry.cn-${image.region}.aliyuncs.com/${image.namespace}/${image.target}`,
   );
 
+  try {
+    await saveHistoryItems(env, normalizedImages);
+  } catch (error) {
+    console.warn("Save sync history failed:", error);
+  }
+
   return jsonResponse({ message: "sync request sent", pullCommands });
+}
+
+async function handleHistoryGet(env) {
+  return jsonResponse({ items: await loadHistoryItems(env) });
 }
 
 async function handleMainPage(env) {
@@ -153,8 +171,16 @@ async function handleMainPage(env) {
       <div class="min-h-screen bg-gradient-to-r from-pink-100 to-blue-100 flex items-center justify-center p-4">
         <div class="bg-white shadow-lg rounded-lg p-8 max-w-xl w-full">
           <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Docker 镜像同步</h1>
-          <div v-for="(image, index) in images" :key="index" class="border border-gray-200 rounded-lg p-6 mb-6 bg-white shadow-sm">
-            <h2 class="text-xl font-semibold text-gray-700 mb-4">镜像 {{ index + 1 }}</h2>
+          <div class="border border-gray-200 rounded-lg p-6 mb-6 bg-white shadow-sm">
+            <div class="mb-4">
+              <label class="block text-gray-700 text-sm font-bold mb-2">已同步镜像:</label>
+              <select v-model="selectedHistoryKey" @change="applyHistory" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
+                <option value="">手动输入新镜像</option>
+                <option v-for="item in historyItems" :key="item.key" :value="item.key">
+                  {{ item.key }} -> {{ item.targetName }}
+                </option>
+              </select>
+            </div>
             <div class="mb-4">
               <label class="block text-gray-700 text-sm font-bold mb-2">来源镜像（例：vaultwarden/server:1.26.0）:</label>
               <input type="text" v-model.trim="image.source" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
@@ -171,11 +197,9 @@ async function handleMainPage(env) {
               <label class="block text-gray-700 text-sm font-bold mb-2">命名空间:</label>
               <input type="text" v-model.trim="image.namespace" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
             </div>
-            <button @click="removeImage(index)" type="button" class="w-full bg-red-400 hover:bg-red-500 text-white font-bold py-2 px-4 rounded-lg transition duration-300">删除</button>
           </div>
-          <div class="flex justify-between gap-4">
-            <button @click="addImage" type="button" class="bg-blue-400 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded-lg transition duration-300">添加镜像</button>
-            <button @click="syncImages" type="button" class="bg-green-400 hover:bg-green-500 text-white font-bold py-2 px-4 rounded-lg transition duration-300" :disabled="loading">
+          <div>
+            <button @click="syncImage" type="button" class="w-full bg-green-400 hover:bg-green-500 text-white font-bold py-2 px-4 rounded-lg transition duration-300" :disabled="loading">
               {{ loading ? '同步中...' : '同步镜像' }}
             </button>
           </div>
@@ -203,31 +227,48 @@ async function handleMainPage(env) {
           const App = {
             data() {
               return {
-                images: [{
+                image: {
                   source: 'vaultwarden/server:1.26.0',
                   target: 'bitwarden:1.26.0',
                   region: ${JSON.stringify(defaultRegion)},
                   namespace: ${JSON.stringify(defaultNamespace)}
-                }],
+                },
+                historyItems: [],
+                selectedHistoryKey: '',
                 loading: false,
                 message: null,
                 messageClass: null
               };
             },
+            mounted() {
+              this.loadHistory();
+            },
             methods: {
-              addImage() {
-                this.images.push({
-                  source: '',
-                  target: '',
-                  region: ${JSON.stringify(defaultRegion)},
-                  namespace: ${JSON.stringify(defaultNamespace)}
-                });
+              async loadHistory() {
+                try {
+                  const response = await fetch('/history');
+                  const result = await response.json();
+                  if (response.ok && Array.isArray(result.items)) {
+                    this.historyItems = result.items;
+                  }
+                } catch (error) {
+                  console.warn('Load history failed:', error);
+                }
               },
-              removeImage(index) {
-                this.images.splice(index, 1);
+              applyHistory() {
+                const item = this.historyItems.find(history => history.key === this.selectedHistoryKey);
+                if (!item) {
+                  return;
+                }
+                this.image = {
+                  source: item.source,
+                  target: item.targetName,
+                  region: item.region || ${JSON.stringify(defaultRegion)},
+                  namespace: item.namespace || ${JSON.stringify(defaultNamespace)}
+                };
               },
-              async syncImages() {
-                if (this.images.some(item => !item.source || !item.target || !item.region || !item.namespace)) {
+              async syncImage() {
+                if (!this.image.source || !this.image.target || !this.image.region || !this.image.namespace) {
                   this.message = '请填写完整的镜像信息';
                   this.messageClass = 'bg-red-100 text-red-600';
                   return;
@@ -240,7 +281,7 @@ async function handleMainPage(env) {
                   const response = await fetch('/sync', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ images: this.images })
+                    body: JSON.stringify({ images: [this.image] })
                   });
 
                   const result = await response.json();
@@ -255,6 +296,7 @@ async function handleMainPage(env) {
                   this.message =
                     \`同步请求已发送，时间：\${formattedTime}\\n稍等30S~60S后，请执行以下拉取命令：\\n\\n\${result.pullCommands.join('\\n\\n')}\\n\`;
                   this.messageClass = 'bg-green-100 text-green-600';
+                  this.loadHistory();
                 } catch (error) {
                   this.message = \`同步请求失败：\${error.message}\`;
                   this.messageClass = 'bg-red-100 text-red-600';
@@ -380,6 +422,119 @@ function getRequiredEnv(env, key) {
 function parseRegion(registry) {
   const match = String(registry).match(/^registry\.cn-([a-z0-9-]+)\.aliyuncs\.com$/);
   return match ? match[1] : "";
+}
+
+async function loadHistoryItems(env) {
+  const store = getHistoryStore(env);
+  if (!store) {
+    return [];
+  }
+
+  const value = await readStoreValue(store, HISTORY_STORE_KEY);
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const items = JSON.parse(value);
+    return Array.isArray(items) ? sortHistoryItems(items) : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+async function saveHistoryItems(env, images) {
+  const store = getHistoryStore(env);
+  if (!store) {
+    return;
+  }
+
+  const currentItems = await loadHistoryItems(env);
+  const itemMap = new Map(currentItems.map((item) => [item.key, item]));
+  const updatedAt = new Date().toISOString();
+
+  for (const image of images) {
+    const source = image.source.trim();
+    const targetName = getImageNameWithTag(image.target.trim());
+    const key = stripImageTag(source);
+    if (!source || !targetName || !key) {
+      continue;
+    }
+
+    itemMap.set(key, {
+      key,
+      source,
+      targetName,
+      region: image.region,
+      namespace: image.namespace,
+      updatedAt,
+    });
+  }
+
+  await writeStoreValue(store, HISTORY_STORE_KEY, JSON.stringify(sortHistoryItems([...itemMap.values()])));
+}
+
+function getHistoryStore(env) {
+  return env && (env.SYNC_HISTORY_KV || env.HISTORY_KV || env.DOCKER_SYNC_KV || env.SYNC_HISTORY);
+}
+
+async function readStoreValue(store, key) {
+  if (typeof store.get === "function") {
+    const value = await store.get(key);
+    return normalizeStoreValue(value);
+  }
+  if (typeof store.getWithMetadata === "function") {
+    const value = await store.getWithMetadata(key);
+    return normalizeStoreValue(value && (value.value || value));
+  }
+  return "";
+}
+
+async function writeStoreValue(store, key, value) {
+  if (typeof store.put === "function") {
+    await store.put(key, value);
+    return;
+  }
+  if (typeof store.set === "function") {
+    await store.set(key, value);
+  }
+}
+
+async function normalizeStoreValue(value) {
+  if (!value) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value.text === "function") {
+    return value.text();
+  }
+  if (value instanceof ArrayBuffer) {
+    return new TextDecoder().decode(value);
+  }
+  return String(value);
+}
+
+function sortHistoryItems(items) {
+  return items
+    .filter((item) => item && item.key && item.source && item.targetName)
+    .sort((left, right) => String(right.updatedAt || "").localeCompare(String(left.updatedAt || "")));
+}
+
+function stripImageTag(image) {
+  const withoutDigest = String(image).split("@")[0];
+  const slashIndex = withoutDigest.lastIndexOf("/");
+  const colonIndex = withoutDigest.lastIndexOf(":");
+  if (colonIndex > slashIndex) {
+    return withoutDigest.slice(0, colonIndex);
+  }
+  return withoutDigest;
+}
+
+function getImageNameWithTag(image) {
+  const withoutDigest = String(image).split("@")[0];
+  return withoutDigest.slice(withoutDigest.lastIndexOf("/") + 1);
 }
 
 function extractGithubMessage(body) {
