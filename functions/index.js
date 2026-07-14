@@ -21,7 +21,9 @@ export async function onRequest(context) {
 
   const authenticated = await hasValidSession(request, env);
   if (!authenticated) {
-    return Response.redirect(new URL("/login", request.url), 302);
+    const loginUrl = new URL(request.url);
+    loginUrl.pathname = "/login";
+    return redirectResponse(loginUrl.toString());
   }
 
   if (url.pathname === "/sync") {
@@ -424,4 +426,11 @@ function jsonResponse(data, status = 200) {
 
 function methodNotAllowed() {
   return new Response("Method Not Allowed", { status: 405 });
+}
+
+function redirectResponse(location) {
+  return new Response(null, {
+    status: 302,
+    headers: { Location: location },
+  });
 }
