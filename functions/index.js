@@ -1,6 +1,39 @@
 const COOKIE_NAME = "auth_token";
 const COOKIE_EXPIRATION = 30 * 60;
 const HISTORY_STORE_KEY = "docker_sync_history";
+const INITIAL_HISTORY_ITEMS = [
+  historyItem("2026-07-14 03:32:29", "mattermost/mattermost-team-edition:11.8.3", "mattermost-team-edition:11.8.3"),
+  historyItem("2026-07-13 02:35:14", "ghcr.io/mhsanaei/3x-ui:v3.5.0", "3x-ui:v3.5.0"),
+  historyItem("2026-06-26 10:41:40", "headscale/headscale:stable", "headscale:v0.29"),
+  historyItem("2026-06-26 10:34:52", "ssliunian/derper:v1.98.5", "derper:v1.98.5"),
+  historyItem("2026-06-26 07:47:47", "ssliunian/openvpn:latest", "openvpn:latest"),
+  historyItem("2026-06-24 10:39:45", "ghcr.io/home-assistant/home-assistant:stable", "home-assistant:stable"),
+  historyItem("2026-06-11 09:43:26", "monica:4.1.2-fpm-alpine", "monica:4.1.2-fpm-alpine"),
+  historyItem("2026-06-01 09:44:07", "authelia/authelia:4.39.20", "authelia:4.39.20"),
+  historyItem("2026-05-26 05:49:21", "louislam/uptime-kuma:2.3.2", "uptime-kuma:2.3.2"),
+  historyItem("2026-05-25 06:23:07", "codercom/code-server:4.121.0-39", "code-server:4.121.0-39"),
+  historyItem("2026-04-27 07:20:06", "nikolaik/python-nodejs:python3.11-nodejs20", "python-nodejs:python3.11-nodejs20"),
+  historyItem("2026-04-27 03:25:23", "vaultwarden/server:1.35.8", "bitwarden:1.35.8"),
+  historyItem("2026-04-23 14:57:38", "zhulinsen/daily_stock_analysis:latest", "daily_stock_analysis:latest"),
+  historyItem("2026-04-13 05:50:13", "openilink/openilink-hub:0.1.31", "openilink-hub:0.1.31"),
+  historyItem("2026-03-17 03:59:39", "ghcr.io/mtvpls/moontvplus:latest", "moontvplus:latest"),
+  historyItem("2026-03-13 07:09:27", "alpine/openclaw:2026.3.12", "openclaw:2026.3.12"),
+  historyItem("2026-02-24 03:26:26", "calciumion/new-api:v0.10.9", "new-api:v0.10.9"),
+  historyItem("2026-02-24 03:26:24", "redis:7.2.13", "redis:7.2.13"),
+  historyItem("2026-02-24 03:17:40", "stirlingtools/stirling-pdf:2.5.3-ultra-lite", "stirling-pdf:2.5.3-ultra-lite"),
+  historyItem("2026-02-24 03:17:11", "henrygd/beszel:0.18.4", "beszel:0.18.4"),
+  historyItem("2026-02-24 03:17:10", "henrygd/beszel-agent:0.18.4", "beszel-agent:0.18.4"),
+  historyItem("2026-01-01 01:08:03", "su3817807/ctyun:latest", "ctyun:latest"),
+  historyItem("2025-12-31 10:36:03", "hezhizheng/go-wxpush:v3", "go-wxpush:v3"),
+  historyItem("2025-12-30 09:08:28", "nginx:1.28.1-alpine", "nginx:1.28.1-alpine"),
+  historyItem("2025-12-16 03:27:16", "ghcr.io/hkuds/lightrag:latest", "lightrag:latest"),
+  historyItem("2025-12-15 02:45:27", "infiniflow/ragflow:v0.21.1", "ragflow:v0.21.1"),
+  historyItem("2025-12-12 09:41:12", "idootop/migpt-next:latest", "migpt-next:latest"),
+  historyItem("2025-12-09 09:25:36", "vllm/vllm-openai:latest", "vllm-openai:latest"),
+  historyItem("2025-12-02 09:29:17", "nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04", "cuda:12.4.1-cudnn-runtime-ubuntu22.04"),
+  historyItem("2025-12-02 06:46:37", "lobehub/lobehub:2.0.0-next.144", "lobehub:2.0.0-next.144"),
+  historyItem("2025-12-02 06:31:42", "kodcloud/kodbox:latest", "kodbox:1.64"),
+];
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -424,15 +457,28 @@ function parseRegion(registry) {
   return match ? match[1] : "";
 }
 
+function historyItem(updatedAt, source, targetName, region = "shanghai", namespace = "mirco_service") {
+  return {
+    key: stripImageTag(source),
+    source,
+    targetName,
+    region,
+    namespace,
+    updatedAt: `${updatedAt.replace(" ", "T")}.000Z`,
+  };
+}
+
 async function loadHistoryItems(env) {
   const store = getHistoryStore(env);
   if (!store) {
-    return [];
+    return INITIAL_HISTORY_ITEMS;
   }
 
   const value = await readStoreValue(store, HISTORY_STORE_KEY);
   if (!value) {
-    return [];
+    const initialItems = sortHistoryItems(INITIAL_HISTORY_ITEMS);
+    await writeStoreValue(store, HISTORY_STORE_KEY, JSON.stringify(initialItems));
+    return initialItems;
   }
 
   try {

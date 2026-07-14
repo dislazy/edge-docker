@@ -69,6 +69,8 @@ For a fine-grained GitHub token, grant access to the target repository and allow
 
 After `/sync` successfully sends the GitHub dispatch request, the app writes the submitted image mapping to KV. The history dropdown is deduplicated by source image without tag.
 
+When KV is empty, `/history` seeds the store with the built-in historical sync list once, then returns the KV-backed list.
+
 Example:
 
 ```text
