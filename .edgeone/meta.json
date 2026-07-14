@@ -1,0 +1,37 @@
+{
+  "conf": {},
+  "routes": [
+    {
+      "routePath": "/",
+      "mountPath": "/",
+      "method": "",
+      "module": [
+        "index.js:onRequest"
+      ]
+    },
+    {
+      "routePath": "/login",
+      "mountPath": "/",
+      "method": "",
+      "module": [
+        "index.js:onRequest"
+      ]
+    },
+    {
+      "routePath": "/sync",
+      "mountPath": "/",
+      "method": "",
+      "module": [
+        "index.js:onRequest"
+      ]
+    },
+    {
+      "routePath": "/healthy",
+      "mountPath": "/",
+      "method": "",
+      "module": [
+        "index.js:onRequest"
+      ]
+    }
+  ]
+}
