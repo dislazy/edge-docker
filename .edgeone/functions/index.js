@@ -278,15 +278,19 @@ async function handleMainPage(env) {
             },
             methods: {
               async loadHistory() {
+                const localItems = this.loadLocalHistory();
                 try {
                   const response = await fetch('/history');
                   const result = await response.json();
                   if (response.ok && Array.isArray(result.items)) {
-                    this.historyItems = result.items;
+                    this.historyItems = this.mergeHistoryItems(result.items, localItems);
+                    this.saveLocalHistory(this.historyItems);
+                    return;
                   }
                 } catch (error) {
                   console.warn('Load history failed:', error);
                 }
+                this.historyItems = localItems;
               },
               applyHistory() {
                 const item = this.historyItems.find(history => history.key === this.selectedHistoryKey);
@@ -323,6 +327,53 @@ async function handleMainPage(env) {
                   tag: hasTag ? image.slice(colonIndex + 1) : ''
                 };
               },
+              buildHistoryItem(image) {
+                const sourceParts = this.parseImageName(image.source);
+                const targetParts = this.parseImageName(image.target);
+                return {
+                  key: sourceParts.repository,
+                  source: image.source,
+                  targetName: targetParts.name && targetParts.tag ? \`\${targetParts.name}:\${targetParts.tag}\` : image.target,
+                  region: image.region,
+                  namespace: image.namespace,
+                  updatedAt: new Date().toISOString()
+                };
+              },
+              upsertHistoryItem(item) {
+                if (!item.key || !item.source || !item.targetName) {
+                  return;
+                }
+                this.historyItems = this.mergeHistoryItems([item], this.historyItems);
+                this.selectedHistoryKey = item.key;
+                this.saveLocalHistory(this.historyItems);
+              },
+              mergeHistoryItems(primaryItems, fallbackItems) {
+                const itemMap = new Map();
+                for (const item of [...fallbackItems, ...primaryItems]) {
+                  if (item && item.key) {
+                    itemMap.set(item.key, item);
+                  }
+                }
+                return [...itemMap.values()].sort((left, right) =>
+                  String(right.updatedAt || '').localeCompare(String(left.updatedAt || ''))
+                );
+              },
+              loadLocalHistory() {
+                try {
+                  const items = JSON.parse(localStorage.getItem('docker_sync_history') || '[]');
+                  return Array.isArray(items) ? items : [];
+                } catch (error) {
+                  console.warn('Load local history failed:', error);
+                  return [];
+                }
+              },
+              saveLocalHistory(items) {
+                try {
+                  localStorage.setItem('docker_sync_history', JSON.stringify(items));
+                } catch (error) {
+                  console.warn('Save local history failed:', error);
+                }
+              },
               async syncImage() {
                 if (!this.image.source || !this.image.target || !this.image.region || !this.image.namespace) {
                   this.message = '请填写完整的镜像信息';
@@ -352,6 +403,7 @@ async function handleMainPage(env) {
                   this.message =
                     \`同步请求已发送，时间：\${formattedTime}\\n稍等30S~60S后，请执行以下拉取命令：\\n\\n\${result.pullCommands.join('\\n\\n')}\\n\`;
                   this.messageClass = 'bg-green-100 text-green-600';
+                  this.upsertHistoryItem(this.buildHistoryItem(this.image));
                   this.loadHistory();
                 } catch (error) {
                   this.message = \`同步请求失败：\${error.message}\`;

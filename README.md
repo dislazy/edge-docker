@@ -8,7 +8,7 @@ Tencent EdgeOne Pages Functions app for triggering a GitHub Actions workflow to 
 - 30-minute signed login cookie.
 - Server-side GitHub repository dispatch.
 - Docker pull command generation after dispatch succeeds.
-- Single-image sync form with reusable history from EdgeOne KV storage.
+- Single-image sync form with reusable browser history and optional EdgeOne KV backup.
 - `/healthy` health check endpoint.
 
 ## Project Structure
@@ -67,7 +67,7 @@ For a fine-grained GitHub token, grant access to the target repository and allow
 
 ## Image History
 
-After `/sync` successfully sends the GitHub dispatch request, the app writes the submitted image mapping to KV. The history dropdown is deduplicated by source image without tag.
+After `/sync` successfully sends the GitHub dispatch request, the app writes the submitted image mapping to browser `localStorage` immediately and also tries to write it to KV when a KV binding exists. The history dropdown is deduplicated by source image without tag.
 
 When KV is empty, `/history` seeds the store with the built-in historical sync list once, then returns the KV-backed list.
 
