@@ -300,6 +300,29 @@ async function handleMainPage(env) {
                   namespace: item.namespace || ${JSON.stringify(defaultNamespace)}
                 };
               },
+              syncTargetFromSource() {
+                const sourceParts = this.parseImageName(this.image.source);
+                if (!sourceParts.name || !sourceParts.tag) {
+                  return;
+                }
+
+                const targetParts = this.parseImageName(this.image.target);
+                const shouldKeepMappedName = this.selectedHistoryKey && this.selectedHistoryKey === sourceParts.repository;
+                const targetName = shouldKeepMappedName && targetParts.name ? targetParts.name : sourceParts.name;
+                this.image.target = \`\${targetName}:\${sourceParts.tag}\`;
+              },
+              parseImageName(value) {
+                const image = String(value || '').split('@')[0].trim();
+                const slashIndex = image.lastIndexOf('/');
+                const colonIndex = image.lastIndexOf(':');
+                const hasTag = colonIndex > slashIndex;
+                const repository = hasTag ? image.slice(0, colonIndex) : image;
+                return {
+                  repository,
+                  name: repository.slice(repository.lastIndexOf('/') + 1),
+                  tag: hasTag ? image.slice(colonIndex + 1) : ''
+                };
+              },
               async syncImage() {
                 if (!this.image.source || !this.image.target || !this.image.region || !this.image.namespace) {
                   this.message = '请填写完整的镜像信息';
@@ -336,6 +359,11 @@ async function handleMainPage(env) {
                 } finally {
                   this.loading = false;
                 }
+              }
+            },
+            watch: {
+              'image.source'() {
+                this.syncTargetFromSource();
               }
             },
             template: \`${appTemplate}\`
