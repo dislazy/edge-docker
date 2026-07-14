@@ -210,7 +210,7 @@ async function handleMainPage(env) {
               <select v-model="selectedHistoryKey" @change="applyHistory" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
                 <option value="">手动输入新镜像</option>
                 <option v-for="item in historyItems" :key="item.key" :value="item.key">
-                  {{ item.key }} -> {{ item.targetName }}
+                  {{ item.key }}
                 </option>
               </select>
             </div>
