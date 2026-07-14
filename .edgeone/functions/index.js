@@ -74,6 +74,13 @@ export async function onRequest(context) {
     return handleHistoryGet(env);
   }
 
+  if (url.pathname === "/history-page") {
+    if (request.method !== "GET") {
+      return methodNotAllowed();
+    }
+    return handleHistoryPage(env);
+  }
+
   if (request.method === "GET" && (url.pathname === "/" || url.pathname === "")) {
     return handleMainPage(env);
   }
@@ -185,6 +192,58 @@ async function handleHistoryGet(env) {
   return jsonResponse({ items: await loadHistoryItems(env) });
 }
 
+async function handleHistoryPage(env) {
+  const items = await loadHistoryItems(env);
+  const rows = items.map((item) => {
+    const target = `registry.cn-${escapeHtml(item.region || "shanghai")}.aliyuncs.com/${escapeHtml(item.namespace || "mirco_service")}/${escapeHtml(item.targetName)}`;
+    return `
+      <tr class="border-b border-gray-200">
+        <td class="px-4 py-3 align-top text-gray-600">${escapeHtml(item.key)}</td>
+        <td class="px-4 py-3 align-top font-mono text-sm text-gray-800 break-all">${escapeHtml(item.source)}</td>
+        <td class="px-4 py-3 align-top font-mono text-sm text-gray-800 break-all">${target}</td>
+        <td class="px-4 py-3 align-top text-sm text-gray-500 whitespace-nowrap">${formatHistoryTime(item.updatedAt)}</td>
+      </tr>`;
+  }).join("");
+
+  const html = `<!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Docker Sync History</title>
+      <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    </head>
+    <body class="min-h-screen bg-gradient-to-r from-pink-100 to-blue-100 p-4">
+      <main class="max-w-6xl mx-auto bg-white shadow-lg rounded-lg p-6">
+        <div class="flex items-center justify-between gap-4 mb-6">
+          <div>
+            <h1 class="text-2xl font-bold text-gray-800">Docker 镜像历史</h1>
+            <p class="text-sm text-gray-500 mt-1">共 ${items.length} 条，按更新时间倒序展示</p>
+          </div>
+          <a href="/" class="bg-blue-400 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded-lg transition duration-300">返回同步页</a>
+        </div>
+        <div class="overflow-x-auto border border-gray-200 rounded-lg">
+          <table class="min-w-full bg-white">
+            <thead class="bg-gray-100">
+              <tr>
+                <th class="px-4 py-3 text-left text-sm font-bold text-gray-700">镜像</th>
+                <th class="px-4 py-3 text-left text-sm font-bold text-gray-700">Source</th>
+                <th class="px-4 py-3 text-left text-sm font-bold text-gray-700">Target</th>
+                <th class="px-4 py-3 text-left text-sm font-bold text-gray-700">更新时间</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows || `<tr><td colspan="4" class="px-4 py-8 text-center text-gray-500">暂无历史记录</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </main>
+    </body>
+    </html>`;
+
+  return htmlResponse(html);
+}
+
 async function handleMainPage(env) {
   try {
     const [vueScript, tailwindCSS] = await Promise.all([
@@ -203,7 +262,10 @@ async function handleMainPage(env) {
     const appTemplate = `
       <div class="min-h-screen bg-gradient-to-r from-pink-100 to-blue-100 flex items-center justify-center p-4">
         <div class="bg-white shadow-lg rounded-lg p-8 max-w-xl w-full">
-          <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Docker 镜像同步</h1>
+          <div class="flex items-center justify-between gap-4 mb-6">
+            <h1 class="text-3xl font-bold text-gray-800">Docker 镜像同步</h1>
+            <a href="/history-page" class="text-sm text-blue-600 hover:text-blue-800">查看历史</a>
+          </div>
           <div class="border border-gray-200 rounded-lg p-6 mb-6 bg-white shadow-sm">
             <div class="mb-4">
               <label class="block text-gray-700 text-sm font-bold mb-2">已同步镜像:</label>
@@ -661,6 +723,22 @@ function stripImageTag(image) {
 function getImageNameWithTag(image) {
   const withoutDigest = String(image).split("@")[0];
   return withoutDigest.slice(withoutDigest.lastIndexOf("/") + 1);
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function formatHistoryTime(value) {
+  if (!value) {
+    return "";
+  }
+  return String(value).replace("T", " ").replace(".000Z", " UTC");
 }
 
 function extractGithubMessage(body) {

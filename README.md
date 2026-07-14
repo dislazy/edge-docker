@@ -63,6 +63,7 @@ For a fine-grained GitHub token, grant access to the target repository and allow
 | `/login` | `POST` | Password verification and cookie creation. |
 | `/sync` | `POST` | Sends the GitHub repository dispatch request. Requires login. |
 | `/history` | `GET` | Returns previously submitted image sync history from KV. Requires login. |
+| `/history-page` | `GET` | Renders a table of source and target image history. Requires login. |
 | `/healthy` | `GET` | Health check endpoint. |
 
 ## Image History
