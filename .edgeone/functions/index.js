@@ -1,6 +1,9 @@
+import { getStore } from "@edgeone/pages-blob";
+
 const COOKIE_NAME = "auth_token";
 const COOKIE_EXPIRATION = 30 * 60;
-const HISTORY_STORE_KEY = "docker_sync_history";
+const HISTORY_STORE_NAME = "docker-sync-history";
+const HISTORY_STORE_KEY = "history.json";
 const INITIAL_HISTORY_ITEMS = [
   historyItem("2026-07-14 03:32:29", "mattermost/mattermost-team-edition:11.8.3", "mattermost-team-edition:11.8.3"),
   historyItem("2026-07-13 02:35:14", "ghcr.io/mhsanaei/3x-ui:v3.5.0", "3x-ui:v3.5.0"),
@@ -179,13 +182,17 @@ async function handleSyncPost(request, env) {
       `docker pull registry.cn-${image.region}.aliyuncs.com/${image.namespace}/${image.target}`,
   );
 
+  let historySaved = true;
+  let historyError = "";
   try {
     await saveHistoryItems(env, normalizedImages);
   } catch (error) {
     console.warn("Save sync history failed:", error);
+    historySaved = false;
+    historyError = error.message;
   }
 
-  return jsonResponse({ message: "sync request sent", pullCommands });
+  return jsonResponse({ message: "sync request sent", pullCommands, historySaved, historyError });
 }
 
 async function handleHistoryGet(env) {
@@ -340,19 +347,17 @@ async function handleMainPage(env) {
             },
             methods: {
               async loadHistory() {
-                const localItems = this.loadLocalHistory();
                 try {
                   const response = await fetch('/history');
                   const result = await response.json();
                   if (response.ok && Array.isArray(result.items)) {
-                    this.historyItems = this.mergeHistoryItems(result.items, localItems);
-                    this.saveLocalHistory(this.historyItems);
+                    this.historyItems = result.items;
                     return;
                   }
                 } catch (error) {
                   console.warn('Load history failed:', error);
                 }
-                this.historyItems = localItems;
+                this.historyItems = [];
               },
               applyHistory() {
                 const item = this.historyItems.find(history => history.key === this.selectedHistoryKey);
@@ -389,53 +394,6 @@ async function handleMainPage(env) {
                   tag: hasTag ? image.slice(colonIndex + 1) : ''
                 };
               },
-              buildHistoryItem(image) {
-                const sourceParts = this.parseImageName(image.source);
-                const targetParts = this.parseImageName(image.target);
-                return {
-                  key: sourceParts.repository,
-                  source: image.source,
-                  targetName: targetParts.name && targetParts.tag ? \`\${targetParts.name}:\${targetParts.tag}\` : image.target,
-                  region: image.region,
-                  namespace: image.namespace,
-                  updatedAt: new Date().toISOString()
-                };
-              },
-              upsertHistoryItem(item) {
-                if (!item.key || !item.source || !item.targetName) {
-                  return;
-                }
-                this.historyItems = this.mergeHistoryItems([item], this.historyItems);
-                this.selectedHistoryKey = item.key;
-                this.saveLocalHistory(this.historyItems);
-              },
-              mergeHistoryItems(primaryItems, fallbackItems) {
-                const itemMap = new Map();
-                for (const item of [...fallbackItems, ...primaryItems]) {
-                  if (item && item.key) {
-                    itemMap.set(item.key, item);
-                  }
-                }
-                return [...itemMap.values()].sort((left, right) =>
-                  String(right.updatedAt || '').localeCompare(String(left.updatedAt || ''))
-                );
-              },
-              loadLocalHistory() {
-                try {
-                  const items = JSON.parse(localStorage.getItem('docker_sync_history') || '[]');
-                  return Array.isArray(items) ? items : [];
-                } catch (error) {
-                  console.warn('Load local history failed:', error);
-                  return [];
-                }
-              },
-              saveLocalHistory(items) {
-                try {
-                  localStorage.setItem('docker_sync_history', JSON.stringify(items));
-                } catch (error) {
-                  console.warn('Save local history failed:', error);
-                }
-              },
               async syncImage() {
                 if (!this.image.source || !this.image.target || !this.image.region || !this.image.namespace) {
                   this.message = '请填写完整的镜像信息';
@@ -464,9 +422,13 @@ async function handleMainPage(env) {
 
                   this.message =
                     \`同步请求已发送，时间：\${formattedTime}\\n稍等30S~60S后，请执行以下拉取命令：\\n\\n\${result.pullCommands.join('\\n\\n')}\\n\`;
+                  if (result.historySaved === false && result.historyError) {
+                    this.message += \`\\n历史保存失败：\${result.historyError}\\n\`;
+                  }
                   this.messageClass = 'bg-green-100 text-green-600';
-                  this.upsertHistoryItem(this.buildHistoryItem(this.image));
-                  this.loadHistory();
+                  await this.loadHistory();
+                  const sourceParts = this.parseImageName(this.image.source);
+                  this.selectedHistoryKey = sourceParts.repository;
                 } catch (error) {
                   this.message = \`同步请求失败：\${error.message}\`;
                   this.messageClass = 'bg-red-100 text-red-600';
@@ -612,31 +574,18 @@ function historyItem(updatedAt, source, targetName, region = "shanghai", namespa
 
 async function loadHistoryItems(env) {
   const store = getHistoryStore(env);
-  if (!store) {
-    return INITIAL_HISTORY_ITEMS;
-  }
-
-  const value = await readStoreValue(store, HISTORY_STORE_KEY);
-  if (!value) {
+  const items = await store.get(HISTORY_STORE_KEY, { type: "json", consistency: "strong" });
+  if (!items) {
     const initialItems = sortHistoryItems(INITIAL_HISTORY_ITEMS);
-    await writeStoreValue(store, HISTORY_STORE_KEY, JSON.stringify(initialItems));
+    await store.setJSON(HISTORY_STORE_KEY, initialItems);
     return initialItems;
   }
 
-  try {
-    const items = JSON.parse(value);
-    return Array.isArray(items) ? sortHistoryItems(items) : [];
-  } catch (_error) {
-    return [];
-  }
+  return Array.isArray(items) ? sortHistoryItems(items) : [];
 }
 
 async function saveHistoryItems(env, images) {
   const store = getHistoryStore(env);
-  if (!store) {
-    return;
-  }
-
   const currentItems = await loadHistoryItems(env);
   const itemMap = new Map(currentItems.map((item) => [item.key, item]));
   const updatedAt = new Date().toISOString();
@@ -659,49 +608,14 @@ async function saveHistoryItems(env, images) {
     });
   }
 
-  await writeStoreValue(store, HISTORY_STORE_KEY, JSON.stringify(sortHistoryItems([...itemMap.values()])));
+  await store.setJSON(HISTORY_STORE_KEY, sortHistoryItems([...itemMap.values()]));
 }
 
 function getHistoryStore(env) {
-  return env && (env.SYNC_HISTORY_KV || env.HISTORY_KV || env.DOCKER_SYNC_KV || env.SYNC_HISTORY);
-}
-
-async function readStoreValue(store, key) {
-  if (typeof store.get === "function") {
-    const value = await store.get(key);
-    return normalizeStoreValue(value);
-  }
-  if (typeof store.getWithMetadata === "function") {
-    const value = await store.getWithMetadata(key);
-    return normalizeStoreValue(value && (value.value || value));
-  }
-  return "";
-}
-
-async function writeStoreValue(store, key, value) {
-  if (typeof store.put === "function") {
-    await store.put(key, value);
-    return;
-  }
-  if (typeof store.set === "function") {
-    await store.set(key, value);
-  }
-}
-
-async function normalizeStoreValue(value) {
-  if (!value) {
-    return "";
-  }
-  if (typeof value === "string") {
-    return value;
-  }
-  if (typeof value.text === "function") {
-    return value.text();
-  }
-  if (value instanceof ArrayBuffer) {
-    return new TextDecoder().decode(value);
-  }
-  return String(value);
+  return getStore({
+    name: env.BLOB_STORE_NAME || HISTORY_STORE_NAME,
+    consistency: "strong",
+  });
 }
 
 function sortHistoryItems(items) {

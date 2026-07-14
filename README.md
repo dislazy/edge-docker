@@ -8,7 +8,7 @@ Tencent EdgeOne Pages Functions app for triggering a GitHub Actions workflow to 
 - 30-minute signed login cookie.
 - Server-side GitHub repository dispatch.
 - Docker pull command generation after dispatch succeeds.
-- Single-image sync form with reusable browser history and optional EdgeOne KV backup.
+- Single-image sync form with reusable history stored in EdgeOne Blob.
 - `/healthy` health check endpoint.
 
 ## Project Structure
@@ -40,7 +40,7 @@ Configure these variables in Tencent EdgeOne:
 | `SESSION_SECRET` | No | Secret used to sign login cookies. If omitted, `PASSWORD` is used. |
 | `ALIYUN_REGISTRY` | No | Default registry, for example `registry.cn-shanghai.aliyuncs.com`. |
 | `ALIYUN_NAME_SPACE` | No | Default Aliyun namespace. |
-| `SYNC_HISTORY_KV` | No | EdgeOne KV binding used to store synced image history. Also supports `HISTORY_KV`, `DOCKER_SYNC_KV`, or `SYNC_HISTORY`. |
+| `BLOB_STORE_NAME` | No | EdgeOne Blob namespace for sync history. Defaults to `docker-sync-history`. |
 
 The local `.env` file is ignored by Git and should not be committed.
 
@@ -62,15 +62,15 @@ For a fine-grained GitHub token, grant access to the target repository and allow
 | `/login` | `GET` | Login page. |
 | `/login` | `POST` | Password verification and cookie creation. |
 | `/sync` | `POST` | Sends the GitHub repository dispatch request. Requires login. |
-| `/history` | `GET` | Returns previously submitted image sync history from KV. Requires login. |
+| `/history` | `GET` | Returns previously submitted image sync history from Blob. Requires login. |
 | `/history-page` | `GET` | Renders a table of source and target image history. Requires login. |
 | `/healthy` | `GET` | Health check endpoint. |
 
 ## Image History
 
-After `/sync` successfully sends the GitHub dispatch request, the app writes the submitted image mapping to browser `localStorage` immediately and also tries to write it to KV when a KV binding exists. The history dropdown is deduplicated by source image without tag.
+After `/sync` successfully sends the GitHub dispatch request, the app writes the submitted image mapping to EdgeOne Blob. The history dropdown is deduplicated by source image without tag.
 
-When KV is empty, `/history` seeds the store with the built-in historical sync list once, then returns the KV-backed list.
+When Blob is empty, `/history` seeds the store with the built-in historical sync list once, then returns the Blob-backed list. Reads use strong consistency so the history page can see the latest saved value immediately after sync.
 
 Example:
 
@@ -125,7 +125,7 @@ Recommended EdgeOne Pages build settings:
 | --- | --- |
 | Framework preset | Other / None |
 | Root directory | `/` |
-| Install command | Empty |
+| Install command | `npm ci` |
 | Build command | Empty, or `echo "no build"` if required |
 | Output directory | `.` |
 
