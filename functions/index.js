@@ -218,7 +218,7 @@ async function handleHistoryPage(env) {
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>Docker Sync History</title>
-      <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+      <link rel="stylesheet" href="/tailwind.min.css">
     </head>
     <body class="min-h-screen bg-gradient-to-r from-pink-100 to-blue-100 p-4">
       <main class="max-w-6xl mx-auto bg-white shadow-lg rounded-lg p-6">
@@ -253,15 +253,6 @@ async function handleHistoryPage(env) {
 
 async function handleMainPage(env) {
   try {
-    const [vueScript, tailwindCSS] = await Promise.all([
-      fetch("https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.global.prod.js").then((r) =>
-        r.text(),
-      ),
-      fetch("https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css").then((r) =>
-        r.text(),
-      ),
-    ]);
-
     const defaultRegistry = env.ALIYUN_REGISTRY || "registry.cn-shanghai.aliyuncs.com";
     const defaultNamespace = env.ALIYUN_NAME_SPACE || "mirco_service";
     const defaultRegion = parseRegion(defaultRegistry) || "shanghai";
@@ -318,11 +309,11 @@ async function handleMainPage(env) {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Docker Image Sync</title>
-        <style>${tailwindCSS}</style>
+        <link rel="stylesheet" href="/tailwind.min.css">
       </head>
       <body class="bg-gray-50">
         <div id="app"></div>
-        <script>${vueScript}<\/script>
+        <script src="/vue.global.prod.js"><\/script>
         <script>
           const { createApp } = Vue;
 
@@ -463,7 +454,7 @@ function renderLoginPage() {
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>登录</title>
-      <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+      <link rel="stylesheet" href="/tailwind.min.css">
     </head>
     <body class="min-h-screen bg-gradient-to-r from-pink-100 to-blue-100 flex items-center justify-center p-4">
       <div class="bg-white shadow-lg rounded-lg p-8 max-w-xl w-full">
@@ -488,7 +479,7 @@ function renderLoginErrorPage() {
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>密码错误</title>
-      <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+      <link rel="stylesheet" href="/tailwind.min.css">
     </head>
     <body class="min-h-screen bg-gradient-to-r from-pink-100 to-blue-100 flex items-center justify-center p-4">
       <div class="bg-white shadow-lg rounded-lg p-8 max-w-xl w-full">
